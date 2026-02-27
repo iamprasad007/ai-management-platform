@@ -1,0 +1,6 @@
+/home/prasad/projects/ai-task-platform/spring-user-service/src/main/java/com/example/user/model/User.java
+/home/prasad/projects/ai-task-platform/spring-user-service/src/main/java/com/example/user/SpringUserServiceApplication.java
+/home/prasad/projects/ai-task-platform/spring-user-service/src/main/java/com/example/user/repository/UserRepository.java
+/home/prasad/projects/ai-task-platform/spring-user-service/src/main/java/com/example/user/controller/UserController.java
+/home/prasad/projects/ai-task-platform/spring-user-service/src/main/java/com/example/user/service/UserService.java
+/home/prasad/projects/ai-task-platform/spring-user-service/src/main/java/com/example/user/controller/HealthController.java

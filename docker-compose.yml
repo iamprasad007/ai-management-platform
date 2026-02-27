@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: elasticsearch
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    depends_on:
+      fix-permissions:
+        condition: service_completed_successfully
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  fix-permissions:
+    image: alpine
+    container_name: fix-permissions
+    user: root
+    volumes:
+      - es_data:/mnt/es_data
+    command: chown -R 1000:1000 /mnt/es_data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - platform
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.12.0
+    container_name: logstash
+    volumes:
+      - ./elk/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    ports:
+      - "5000:5000"
+      - "9600:9600"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9600 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  user-service:
+    build:
+      context: ./spring-user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  task-service:
+    build:
+      context: ./task-service
+      dockerfile: Dockerfile
+    container_name: task-service
+    ports:
+      - "8081:8081"
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - USER_SERVICE_URL=http://user-service:8080
+      - LOGSTASH_URL=http://logstash:5000
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - platform
+
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: ai-service
+    ports:
+    - "8082:8082"
+    depends_on:
+      user-service:
+        condition: service_started
+      task-service:
+        condition: service_started
+    networks:
+      - platform
+    environment:
+      USER_SERVICE_URL: http://user-service:8080
+      TASK_SERVICE_URL: http://task-service:8081
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+    - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - platform
+
+
+volumes:
+  es_data:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  platform:
+    driver: bridge

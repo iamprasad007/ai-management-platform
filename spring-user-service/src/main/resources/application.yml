@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: spring-user-service
+
+  elasticsearch:
+    uris: http://elasticsearch:9200
+    connection-timeout: 10s
+    socket-timeout: 60s
+
+  data:
+    elasticsearch:
+      repositories:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.example.user: INFO
+    org.springframework.data.elasticsearch: INFO
