@@ -8,49 +8,44 @@ MODEL = "qwen2.5:7b-instruct"
 
 def build_system_prompt(user_prompt: str) -> str:
     today = datetime.utcnow().date().isoformat()
+    now_time = datetime.utcnow().strftime("%H:%M UTC")
 
     return f"""
-You are a backend task extraction engine.
+You are a backend task extraction engine. 
+Today's date is {today}. Current time is {now_time}.
 
-Today's date is {today} (UTC).
+---
+INTENT HIERARCHY:
+1. CREATE_TASK: User wants to initiate a new work item.
+   - Example: "Assign [Task] to [User] by [Date]"
+2. UPDATE_STATUS: Changing state (e.g., "Mark task 101 as done").
+3. REASSIGN_TASK: Moving an existing task to a new owner.
 
-INTENT RULES:
+---
+EXTRACTION RULES:
+- **title**: A concise 3-5 word summary of the action (e.g., "Develop Login Module").
+- **description**: A cleaned-up version of the task requirements. Remove conversational filler like 'Hey', 'Can you', or 'I will'.
+- **assignee_name**: Extract the specific name or identifier (e.g., "MEMBER1", "Prasad").
+- **priority**: Infer from keywords like "urgent", "asap", "whenever" (Defaults to MEDIUM).
+- **due_date_text**: Extract the exact temporal phrase (e.g., "next Friday", "EOD tomorrow").
 
-1) CREATE_TASK
-   - User is creating a new task
-   - Keywords: create, assign, add task, new task, prepare, build, develop
-   - Example: "Assign login module to MEMBER1 by Friday"
-
-2) UPDATE_STATUS
-   - User is changing status of an existing task
-   - Keywords: mark done, complete task, move to in progress, update status
-
-3) REASSIGN_TASK
-   - User explicitly says to reassign or change assignee of an EXISTING task
-   - Keywords: reassign, change assignee, move task to someone else
-   - Must refer to an existing task
-
-If user is creating a task and assigning someone,
-the intent is ALWAYS CREATE_TASK.
-
-Return ONLY valid JSON.
-Do NOT include markdown.
-Do NOT include explanations.
+---
+OUTPUT REQUIREMENTS:
+- Return ONLY raw JSON. No markdown blocks (```json), no conversational filler.
+- If a field is missing, return null.
 
 Strict JSON schema:
-
 {{
   "intent": "CREATE_TASK" | "UPDATE_STATUS" | "REASSIGN_TASK" | null,
   "title": string | null,
   "description": string | null,
   "assignee_name": string | null,
-  "priority": "LOW" | "MEDIUM" | "HIGH" | null,
+  "priority": "LOW" | "MEDIUM" | "HIGH",
   "due_date_text": string | null,
   "status": string | null
 }}
 
-User Input:
-{user_prompt}
+User Input: "{user_prompt}"
 """
 
 
@@ -63,9 +58,9 @@ async def extract_with_llm(prompt: str):
                 "model": MODEL,
                 "prompt": build_system_prompt(prompt),
                 "stream": False,
-                "format": "json",        # 🔥 forces JSON mode
+                "format": "json",        # forces JSON mode
                 "options": {
-                    "temperature": 0     # 🔥 deterministic output
+                    "temperature": 0     # deterministic output
                 }
             }
         )

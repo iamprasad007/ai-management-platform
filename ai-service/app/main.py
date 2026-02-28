@@ -23,7 +23,7 @@ async def ai_create_task(req: AIRequest):
 
 
     # Resolve assignee dynamically from prompt
-    user_id, matched_name = await resolve_user_from_prompt(req.prompt)
+    user_id, matched_name = await resolve_user_from_prompt(req.prompt, req.creatorId)
 
     if not user_id:
         return {
@@ -70,8 +70,8 @@ async def ai_create_task(req: AIRequest):
 
 @app.post("/ai/process")
 async def ai_process(req: AIRequest):
-
     try:
+        # 1. Fetch structured data from LLM
         llm_data = await extract_with_llm(req.prompt)
     except Exception as e:
         return {
@@ -79,36 +79,35 @@ async def ai_process(req: AIRequest):
             "error": str(e)
         }
 
-    missing = validate_llm_output(llm_data)
-
-    if missing:
-        return {
-            "status": "INCOMPLETE",
-            "missing_fields": missing,
-            "llm_output": llm_data
-        }
-
+    # 2. Extract initial intent and data
     intent = llm_data.get("intent")
-
+    
     if intent == "CREATE_TASK":
-
         title = llm_data.get("title")
-        assignee_name = llm_data.get("assignee_name")
         due_text = llm_data.get("due_date_text")
 
-        missing = []
+        # 3. RESOLVE USER (Handles names AND "me/myself" via req.creatorId)
+        user_id, matched_name = await resolve_user_from_prompt(req.prompt, req.creatorId)
+        
+        # Patch llm_data so validator sees the assignee is found
+        if user_id:
+            llm_data["assignee_name"] = matched_name
 
+        # 4. VALIDATION LOGIC
+        missing = []
         if not title:
             missing.append("title")
-
-        if not assignee_name:
+        
+        # If user_id is missing, the assignee is truly unknown
+        if not user_id:
             missing.append("assignee")
 
-        # Convert due date BEFORE checking missing
-        due_date_iso = parse_due_date(due_text) if due_text else None
+        # Convert due date using timezone offset
+        due_date_iso = parse_due_date(due_text, req.timezone_offset) if due_text else None
         if not due_date_iso:
             missing.append("due_date")
 
+        # If any fields are still missing after resolution/parsing, return INCOMPLETE
         if missing:
             return {
                 "status": "INCOMPLETE",
@@ -116,15 +115,7 @@ async def ai_process(req: AIRequest):
                 "llm_output": llm_data
             }
 
-        # Resolve assignee AFTER basic validation
-        user_id, _ = await resolve_user_from_prompt(req.prompt)
-        if not user_id:
-            return {
-                "status": "INCOMPLETE",
-                "missing_fields": ["assignee"],
-                "llm_output": llm_data
-            }
-
+        # 5. CREATE TASK PAYLOAD
         task_payload = {
             "title": title,
             "description": llm_data.get("description") or req.prompt,
@@ -136,6 +127,7 @@ async def ai_process(req: AIRequest):
 
         print("TASK PAYLOAD:", task_payload)
 
+        # 6. CALL TASK SERVICE
         created = await create_task(task_payload)
 
         if created.get("error"):
@@ -151,7 +143,7 @@ async def ai_process(req: AIRequest):
             "task": created["data"]
         }
 
-
+    # Handle other intents or unsupported ones
     return {
         "status": "UNSUPPORTED_INTENT",
         "llm_output": llm_data
