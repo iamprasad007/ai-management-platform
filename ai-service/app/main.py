@@ -1,71 +1,13 @@
 from fastapi import FastAPI
 from app.models import AIRequest
-from app.extractor import extract
-from app.validator import validate
 from app.user_client import resolve_user_from_prompt
-from app.task_client import create_task
+from app.task_client import create_task, find_task_by_title, update_task
 from app.llm_client import extract_with_llm
 from app.llm_validator import validate_llm_output
 from app.utils import parse_due_date
 
 
 app = FastAPI()
-
-
-@app.post("/ai/create-task")
-async def ai_create_task(req: AIRequest):
-
-    # Extract structured data from prompt
-    # extracted = extract(req.prompt)
-
-    #Fetch structured data from LLM
-    llm_data = await extract_with_llm(req.prompt)
-
-
-    # Resolve assignee dynamically from prompt
-    user_id, matched_name = await resolve_user_from_prompt(req.prompt, req.creatorId)
-
-    if not user_id:
-        return {
-            "status": "INCOMPLETE",
-            "missing_fields": ["assignee"],
-            "extracted_data": extracted.dict()
-        }
-
-    # Validate remaining required fields
-    missing = validate(extracted)
-
-    if missing:
-        return {
-            "status": "INCOMPLETE",
-            "missing_fields": missing,
-            "extracted_data": extracted.dict()
-        }
-
-    # Create task payload
-    task_payload = {
-        "title": extracted.title,
-        "description": extracted.description,
-        "creatorId": req.creatorId,
-        "assigneeId": user_id,
-        "priority": extracted.priority or "MEDIUM",
-        "dueDate": extracted.due_date_iso
-    }
-
-    # Call task-service
-    result = await create_task(task_payload)
-
-    if result["error"]:
-        return {
-            "status": "FAILED",
-            "error_code": result["details"].get("code"),
-            "message": result["details"].get("message")
-        }
-
-    return {
-        "status": "CREATED",
-        "task": result["data"]
-    }
 
 
 @app.post("/ai/process")
@@ -142,6 +84,74 @@ async def ai_process(req: AIRequest):
             "status": "CREATED",
             "task": created["data"]
         }
+    
+    elif intent == "UPDATE_TASK":
+
+        title = llm_data.get("title")
+
+        if not title:
+            return {
+                "status": "INCOMPLETE",
+                "missing_fields": ["title"],
+                "llm_output": llm_data
+            }
+
+        task = await find_task_by_title(title)
+
+        if not task:
+            return {
+                "status": "NOT_FOUND",
+                "details": f"Task '{title}' not found"
+            }
+
+        update_payload = {}
+
+        # Status
+        if llm_data.get("status"):
+            update_payload["status"] = llm_data["status"]
+
+        # Priority
+        if llm_data.get("priority"):
+            update_payload["priority"] = llm_data["priority"]
+
+        # Due Date
+        if llm_data.get("due_date_text"):
+            due_iso = parse_due_date(
+                llm_data["due_date_text"],
+                req.timezone_offset
+            )
+            if due_iso:
+                update_payload["dueDate"] = due_iso
+
+        # Assignee
+        if llm_data.get("assignee_name"):
+            user_id, _ = await resolve_user_from_prompt(
+                req.prompt,
+                req.creatorId
+            )
+            if user_id:
+                update_payload["assigneeId"] = user_id
+
+        if not update_payload:
+            return {
+                "status": "INCOMPLETE",
+                "missing_fields": ["update_fields"],
+                "llm_output": llm_data
+            }
+
+        updated = await update_task(task["id"], update_payload)
+
+        if updated.get("error"):
+            return {
+                "status": "FAILED",
+                "details": updated["details"]
+            }
+
+        return {
+            "status": "UPDATED",
+            "task": updated["data"]
+        }
+
 
     # Handle other intents or unsupported ones
     return {

@@ -11,42 +11,56 @@ def build_system_prompt(user_prompt: str) -> str:
     now_time = datetime.utcnow().strftime("%H:%M UTC")
 
     return f"""
-You are a backend task extraction engine. 
-Today's date is {today}. Current time is {now_time}.
+You are a backend task extraction engine.
+Today is {today}. Current time is {now_time}.
 
----
-INTENT HIERARCHY:
-1. CREATE_TASK: User wants to initiate a new work item.
-   - Example: "Assign [Task] to [User] by [Date]"
-2. UPDATE_STATUS: Changing state (e.g., "Mark task 101 as done").
-3. REASSIGN_TASK: Moving an existing task to a new owner.
+INTENTS:
+1. CREATE_TASK - Create a new task.
+2. UPDATE_TASK - Modify an existing task (status, priority, assignee, due date).
 
----
+
 EXTRACTION RULES:
-- **title**: A concise 3-5 word summary of the action (e.g., "Develop Login Module").
-- **description**: A cleaned-up version of the task requirements. Remove conversational filler like 'Hey', 'Can you', or 'I will'.
-- **assignee_name**: Extract the specific name or identifier (e.g., "MEMBER1", "Prasad").
-- **priority**: Infer from keywords like "urgent", "asap", "whenever" (Defaults to MEDIUM).
-- **due_date_text**: Extract the exact temporal phrase (e.g., "next Friday", "EOD tomorrow").
 
----
-OUTPUT REQUIREMENTS:
-- Return ONLY raw JSON. No markdown blocks (```json), no conversational filler.
-- If a field is missing, return null.
+TITLE:
+- CREATE_TASK → Generate short 3-5 word task summary.
+- UPDATE_TASK → Extract the exact task name mentioned. Do NOT summarize.
+  Example: "Mark UI Development as done" → title: "UI Development"
 
-Strict JSON schema:
+DESCRIPTION:
+- Clean task details. Remove filler words.
+
+ASSIGNEE_NAME:
+- Extract explicit person identifier if mentioned.
+
+PRIORITY:
+- Extract explicit priority words if mentioned.
+- If no priority mentioned, return null.
+
+DUE_DATE_TEXT:
+- Extract exact time phrase (e.g., "next Friday", "EOD tomorrow").
+
+STATUS:
+- Only for UPDATE_TASK.
+- Extract values like done, completed, in progress, blocked.
+
+OUTPUT:
+Return ONLY raw JSON (no markdown, no explanation).
+Missing fields must be null.
+
+Schema:
 {{
-  "intent": "CREATE_TASK" | "UPDATE_STATUS" | "REASSIGN_TASK" | null,
+  "intent": "CREATE_TASK" | "UPDATE_TASK" | null,
   "title": string | null,
   "description": string | null,
   "assignee_name": string | null,
-  "priority": "LOW" | "MEDIUM" | "HIGH",
+  "priority": "LOW" | "MEDIUM" | "HIGH" | null,
   "due_date_text": string | null,
   "status": string | null
 }}
 
 User Input: "{user_prompt}"
 """
+
 
 
 

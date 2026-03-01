@@ -5,7 +5,7 @@ from typing import Optional
 class AIRequest(BaseModel):
     prompt: str
     creatorId: str
-    timezone_offset: int = 0 # Offset in minutes (e.g., 330 for IST)
+    timezone_offset: int = 330 # Offset in minutes (e.g., 330 for IST)
 
 
 class ExtractedTask(BaseModel):

@@ -17,3 +17,12 @@ type Task struct {
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
+
+type TaskFilter struct {
+	AssigneeID string
+	Status     string
+	Priority   string
+	Title      string
+	DueStart   string
+	DueEnd     string
+}

@@ -8,11 +8,9 @@ def parse_due_date(text: str, offset_minutes: int = 0) -> str | None:
     cal = pdt.Calendar()
     
     # 1. Calculate User's Local Time
-    # Server is UTC, so we apply the offset to see what time it is for the user.
     user_now = datetime.now(timezone.utc) + timedelta(minutes=offset_minutes)
     
     # 2. Parse relative to User's Time
-    # We remove tzinfo temporarily because parsedatetime works with naive datetimes
     time_struct, parse_status = cal.parse(text, sourceTime=user_now.replace(tzinfo=None))
 
     if parse_status == 0:

@@ -36,9 +36,7 @@ func main() {
 	r.HandleFunc("/tasks", handler.CreateTask).Methods("POST")
 	r.HandleFunc("/tasks", handler.ListTasks).Methods("GET")
 	r.HandleFunc("/tasks/{id}", handler.GetTask).Methods("GET")
-	r.HandleFunc("/tasks/assignee/{assigneeId}", handler.ListTasksByAssignee).Methods("GET")
-	r.HandleFunc("/tasks/{id}/status", handler.UpdateStatus).Methods("PATCH")
-	r.HandleFunc("/tasks/{id}/assign", handler.ReassignTask).Methods("PATCH")
+	r.HandleFunc("/tasks/{id}", handler.UpdateTask).Methods("PATCH")
 
 	r.Use(middleware.LoggingMiddleware)
 

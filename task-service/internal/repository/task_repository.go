@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"strings"
 	"fmt"
-	"time"
 	"task-service/internal/model"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
@@ -61,136 +59,93 @@ func (r *TaskRepository) GetByID(id string) (*model.Task, error) {
 	return &task, nil
 }
 
-func (r *TaskRepository) GetAll() ([]*model.Task, error) {
-    // 1. Execute the search request
-    // Passing nil as the body retrieves all documents (match_all)
-    res, err := r.es.Search(
-        r.es.Search.WithIndex("tasks"),
-        r.es.Search.WithContext(context.Background()),
-    )
-    if err != nil {
-        return nil, err
-    }
-    defer res.Body.Close()
+func (r *TaskRepository) Search(filter model.TaskFilter) ([]model.Task, error) {
 
-    if res.IsError() {
-        return nil, fmt.Errorf("error fetching tasks: %s", res.Status())
-    }
+	must := []map[string]interface{}{}
 
-    // 2. Define a structure to map the ES response
-    var envelope struct {
-        Hits struct {
-            Hits []struct {
-                Source json.RawMessage `json:"_source"`
-            } `json:"hits"`
-        } `json:"hits"`
-    }
+	if filter.AssigneeID != "" {
+		must = append(must, map[string]interface{}{
+			"term": map[string]interface{}{
+				"assigneeId.keyword": filter.AssigneeID,
+			},
+		})
+	}
 
-    // 3. Decode the response body
-    if err := json.NewDecoder(res.Body).Decode(&envelope); err != nil {
-        return nil, err
-    }
+	if filter.Status != "" {
+		must = append(must, map[string]interface{}{
+			"term": map[string]interface{}{
+				"status.keyword": filter.Status,
+			},
+		})
+	}
 
-    // 4. Parse the individual hits into your model
-    var tasks []*model.Task
-    for _, hit := range envelope.Hits.Hits {
-        var task model.Task
-        if err := json.Unmarshal(hit.Source, &task); err != nil {
-            return nil, err
-        }
-        tasks = append(tasks, &task)
-    }
+	if filter.Priority != "" {
+		must = append(must, map[string]interface{}{
+			"term": map[string]interface{}{
+				"priority.keyword": filter.Priority,
+			},
+		})
+	}
 
-    return tasks, nil
+	if filter.Title != "" {
+		must = append(must, map[string]interface{}{
+			"match": map[string]interface{}{
+				"title": filter.Title,
+			},
+		})
+	}
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": must,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	json.NewEncoder(&buf).Encode(query)
+
+	res, err := r.es.Search(
+		r.es.Search.WithIndex("tasks"),
+		r.es.Search.WithBody(&buf),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	var envelope struct {
+		Hits struct {
+			Hits []struct {
+				Source model.Task `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+
+	json.NewDecoder(res.Body).Decode(&envelope)
+
+	var tasks []model.Task
+	for _, hit := range envelope.Hits.Hits {
+		tasks = append(tasks, hit.Source)
+	}
+
+	return tasks, nil
 }
 
-func (r *TaskRepository) FindByAssignee(assigneeID string) ([]model.Task, error) {
-    // 1. Build the query safely
-    query := map[string]interface{}{
-        "query": map[string]interface{}{
-            "term": map[string]interface{}{
-                "assigneeId.keyword": assigneeID,
-            },
-        },
-    }
+func (r *TaskRepository) GenericUpdate(id string, fields map[string]interface{}) error {
 
-    var buf bytes.Buffer
-    if err := json.NewEncoder(&buf).Encode(query); err != nil {
-        return nil, err
-    }
+	body := map[string]interface{}{
+		"doc": fields,
+	}
 
-    // 2. Execute Search
-    res, err := r.es.Search(
-        r.es.Search.WithIndex("tasks"),
-        r.es.Search.WithBody(&buf),
-        r.es.Search.WithTrackTotalHits(true),
-        r.es.Search.WithContext(context.Background()),
-    )
-    if err != nil {
-        return nil, err
-    }
-    defer res.Body.Close()
-
-    if res.IsError() {
-        return nil, fmt.Errorf("search error: %s", res.Status())
-    }
-
-    // 3. Optimized Decoding (Direct to Struct)
-    var envelope struct {
-        Hits struct {
-            Hits []struct {
-                Source model.Task `json:"_source"`
-            } `json:"hits"`
-        } `json:"hits"`
-    }
-
-    if err := json.NewDecoder(res.Body).Decode(&envelope); err != nil {
-        return nil, fmt.Errorf("error parsing response: %w", err)
-    }
-
-    // 4. Extract results
-    tasks := make([]model.Task, 0, len(envelope.Hits.Hits))
-    for _, hit := range envelope.Hits.Hits {
-        tasks = append(tasks, hit.Source)
-    }
-
-    return tasks, nil
-}
-
-func (r *TaskRepository) UpdateStatus(id string, status string) error {
-
-	updateBody := fmt.Sprintf(`{
-		"doc": {
-			"status": "%s",
-			"updatedAt": "%s"
-		}
-	}`, status, time.Now().Format(time.RFC3339))
+	data, _ := json.Marshal(body)
 
 	_, err := r.es.Update(
 		"tasks",
 		id,
-		strings.NewReader(updateBody),
+		bytes.NewReader(data),
 	)
 
 	return err
 }
-
-func (r *TaskRepository) UpdateAssignee(id string, assigneeID string) error {
-
-	updateBody := fmt.Sprintf(`{
-		"doc": {
-			"assigneeId": "%s",
-			"updatedAt": "%s"
-		}
-	}`, assigneeID, time.Now().Format(time.RFC3339))
-
-	_, err := r.es.Update(
-		"tasks",
-		id,
-		strings.NewReader(updateBody),
-	)
-
-	return err
-}
-
-

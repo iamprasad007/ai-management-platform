@@ -16,25 +16,6 @@ func NewTaskHandler(s *service.TaskService) *TaskHandler {
 	return &TaskHandler{service: s}
 }
 
-// func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
-
-// 	var req model.Task
-// 	err := json.NewDecoder(r.Body).Decode(&req)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	task, err := h.service.CreateTask(req)
-// 	if err != nil {
-//     	http.Error(w, err.Error(), http.StatusBadRequest)
-//     	return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(http.StatusCreated)
-// 	json.NewEncoder(w).Encode(task)
-// }
 
 func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
@@ -84,78 +65,65 @@ func (h *TaskHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
-	tasks, err := h.service.ListTasks()
+
+	query := r.URL.Query()
+
+	filter := model.TaskFilter{
+		AssigneeID: query.Get("assigneeId"),
+		Status:     query.Get("status"),
+		Priority:   query.Get("priority"),
+		Title:      query.Get("title"),
+		DueStart:   query.Get("dueStart"),
+		DueEnd:     query.Get("dueEnd"),
+	}
+
+	tasks, err := h.service.ListTasksWithFilter(filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tasks)
 }
 
 
-func (h *TaskHandler) ListTasksByAssignee(w http.ResponseWriter, r *http.Request) {
-    // 1. Extract from Path instead of Query
-    vars := mux.Vars(r)
-    assigneeID := vars["assigneeId"]
-
-    // 2. Validation
-    if assigneeID == "" {
-        http.Error(w, "assigneeId is required in path", http.StatusBadRequest)
-        return
-    }
-
-    // 3. Call Service 
-    tasks, err := h.service.ListByAssignee(assigneeID)
-    if err != nil {
-        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-        return
-    }
-
-    // 4. Response
-    w.Header().Set("Content-Type", "application/json")
-    if err := json.NewEncoder(w).Encode(tasks); err != nil {
-        http.Error(w, "Encoding Error", http.StatusInternalServerError)
-    }
-}
-
-
-func (h *TaskHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 	id := mux.Vars(r)["id"]
 
 	var body struct {
-		Status string `json:"status"`
+		Status     *string `json:"status"`
+		Priority   *string `json:"priority"`
+		DueDate    *string `json:"dueDate"`
+		AssigneeID *string `json:"assigneeId"`
 	}
 
-	json.NewDecoder(r.Body).Decode(&body)
-
-	err := h.service.UpdateStatus(id, body.Status)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"code":    "INVALID_REQUEST",
+			"message": "Invalid JSON body",
+		})
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-}
-
-func (h *TaskHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
-
-	id := mux.Vars(r)["id"]
-
-	var body struct {
-		NewAssigneeID string `json:"newAssigneeId"`
-		CreatorID     string `json:"creatorId"`
-	}
-
-	json.NewDecoder(r.Body).Decode(&body)
-
-	err := h.service.ReassignTask(id, body.NewAssigneeID, body.CreatorID)
+	updatedTask, err := h.service.UpdateTask(id, body.Status, body.Priority, body.DueDate, body.AssigneeID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"code": "VALIDATION_ERROR",
+			"message": err.Error(),
+		})
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(updatedTask)
 }
+
+
+
 
