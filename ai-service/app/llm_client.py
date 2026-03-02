@@ -18,34 +18,62 @@ INTENTS:
 1. CREATE_TASK - Create a new task.
 2. UPDATE_TASK - Modify an existing task (status, priority, assignee, due date).
 
+INTENT SELECTION RULES:
+- If user is creating or assigning a new task → CREATE_TASK.
+- If user is modifying an existing task → UPDATE_TASK.
+- If unclear → intent must be null.
 
 EXTRACTION RULES:
 
 TITLE:
-- CREATE_TASK → Generate short 3-5 word task summary.
-- UPDATE_TASK → Extract the exact task name mentioned. Do NOT summarize.
-  Example: "Mark UI Development as done" → title: "UI Development"
+CREATE_TASK:
+- Extract task title from user input.
+- If no clear task title is present, return null.
+UPDATE_TASK:
+- Extract the phrase referring to the existing task.
+- This is usually the noun phrase between action verb and status/priority.
+- Example:
+  "Mark Login API implementation as completed"
+  → title: "Login API implementation"
+  "Update priority of Payment Service task to high"
+  → title: "Payment Service task"
+  "Reassign Backend cleanup to Rahul"
+  → title: "Backend cleanup"
+- Do NOT summarize or shorten.
+- Only return null if no task reference exists.
 
 DESCRIPTION:
-- Clean task details. Remove filler words.
+- Extract only details explicitly mentioned.
+- If none → null.
 
 ASSIGNEE_NAME:
 - Extract explicit person identifier if mentioned.
+- If none → null.
 
 PRIORITY:
-- Extract explicit priority words if mentioned.
-- If no priority mentioned, return null.
+- Map words:
+  urgent/asap/high → HIGH
+  low/later/whenever → LOW
+  normal/medium → MEDIUM
+- If not mentioned → null.
 
 DUE_DATE_TEXT:
-- Extract exact time phrase (e.g., "next Friday", "EOD tomorrow").
+- Extract exact time phrase if explicitly mentioned.
+- If not mentioned → null.
 
 STATUS:
 - Only for UPDATE_TASK.
-- Extract values like done, completed, in progress, blocked.
+- Map to one of:
+  "TODO", "IN_PROGRESS", "COMPLETED", "BLOCKED"
+- If not mentioned → null.
+
+STRICT RULES:
+- Do NOT invent information.
+- Do NOT assume defaults.
+- If a field is not explicitly stated, return null.
 
 OUTPUT:
-Return ONLY raw JSON (no markdown, no explanation).
-Missing fields must be null.
+Return ONLY raw JSON.
 
 Schema:
 {{
@@ -55,7 +83,7 @@ Schema:
   "assignee_name": string | null,
   "priority": "LOW" | "MEDIUM" | "HIGH" | null,
   "due_date_text": string | null,
-  "status": string | null
+  "status": "TODO" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED" | null
 }}
 
 User Input: "{user_prompt}"

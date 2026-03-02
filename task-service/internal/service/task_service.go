@@ -262,7 +262,7 @@ func normalizeStatus(input string) (string, error) {
 	switch s {
 	case "todo", "to do", "pending":
 		return StatusTodo, nil
-	case "in progress", "inprogress", "working", "started":
+	case "in progress", "inprogress", "working", "started", "in_progress":
 		return StatusInProgress, nil
 	case "done", "completed", "complete", "finished", "fixed":
 		return StatusCompleted, nil

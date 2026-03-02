@@ -3,7 +3,6 @@ from app.models import AIRequest
 from app.user_client import resolve_user_from_prompt
 from app.task_client import create_task, find_task_by_title, update_task
 from app.llm_client import extract_with_llm
-from app.llm_validator import validate_llm_output
 from app.utils import parse_due_date
 
 
