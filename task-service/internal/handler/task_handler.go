@@ -38,7 +38,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
     	w.WriteHeader(http.StatusBadRequest)
 
 		json.NewEncoder(w).Encode(map[string]string{
-			"code":    "BUSINESS_RULE_VIOLATION",
+			"code":    "UNAUTHORIZED_ACTION",
 			"message": err.Error(),
 		})
 

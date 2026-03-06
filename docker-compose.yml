@@ -10,7 +10,8 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.ml.enabled=false
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
     ports:
       - "9200:9200"
     ulimits:
@@ -123,23 +124,26 @@ services:
     environment:
       USER_SERVICE_URL: http://user-service:8080
       TASK_SERVICE_URL: http://task-service:8081
+      GROQ_API_KEY: "**REPLACE_WITH_YOUR_GROQ_API_KEY**"
 
-  ollama:
-    image: ollama/ollama
-    container_name: ollama
-    ports:
-    - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - platform
+  # ollama:
+  #   image: ollama/ollama
+  #   container_name: ollama
+  #   ports:
+  #   - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   networks:
+  #     - platform
+  #   environment:
+  #     - OLLAMA_KEEP_ALIVE=30m
 
 
 volumes:
   es_data:
     driver: local
-  ollama_data:
-    driver: local
+  # ollama_data:
+  #   driver: local
 
 networks:
   platform:
