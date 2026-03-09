@@ -66,14 +66,16 @@ func (s *TaskService) CreateTask(req model.Task) (model.Task, error) {
 		return model.Task{}, fmt.Errorf("invalid role")
 	}
 
+	title, description := normalizeTitleDescription(req.Title, req.Description)
+
 	task := model.Task{
 		ID:          uuid.New().String(),
-		Title:       req.Title,
-		Description: req.Description,
+		Title:       title,
+		Description: description,
 		CreatorID:   req.CreatorID,
 		AssigneeID:  req.AssigneeID,
-		Status:      "TODO",
-		Priority:    req.Priority,
+		Status:      StatusTodo,
+		Priority:    defaultString(req.Priority, PriorityMedium),
 		DueDate:     req.DueDate,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -89,6 +91,9 @@ func (s *TaskService) GetTask(id string) (*model.Task, error) {
 
 
 func (s *TaskService) ListTasksWithFilter(filter model.TaskFilter) ([]model.Task, error) {
+	normalizeDueFilter(&filter)
+	fmt.Printf("dueStart:", filter.DueStart)
+	fmt.Printf("dueEnd:", filter.DueEnd)
 	return s.repo.Search(filter)
 }
 
@@ -194,6 +199,159 @@ func normalizeStatus(input string) (string, error) {
 }
 
 
+func normalizeTitleDescription(title, description string) (string, string) {
+	title = strings.TrimSpace(title)
+	description = strings.TrimSpace(description)
+
+	// Promote description if title missing
+	if title == "" && description != "" {
+		title = description
+		description = ""
+	}
+
+	// Remove punctuation at edges
+	title = strings.Trim(title, " ,.-")
+	description = strings.Trim(description, " ,.-")
+
+	lower := strings.ToLower(title)
+
+	// Remove known filler prefixes
+	prefixes := []string{
+		"create a task to",
+		"create task to",
+		"create a task for",
+		"create task for",
+		"assign a task to",
+		"assign task to",
+		"add a task to",
+		"add task to",
+	}
+
+	for _, p := range prefixes {
+		if strings.HasPrefix(lower, p) {
+			title = strings.TrimSpace(title[len(p):])
+			lower = strings.ToLower(title)
+			break
+		}
+	}
+
+	words := strings.Fields(title)
+
+	if len(words) == 0 {
+		return "", description
+	}
+
+	// Remove command verbs
+	verbs := map[string]bool{
+		"assign": true,
+		"create": true,
+		"add":    true,
+		"make":   true,
+		"build":  true,
+	}
+
+	if verbs[strings.ToLower(words[0])] {
+		words = words[1:]
+	}
+
+	// Remove leading filler words
+	for len(words) > 0 {
+		w := strings.ToLower(words[0])
+		if w == "a" || w == "an" || w == "the" {
+			words = words[1:]
+		} else {
+			break
+		}
+	}
+
+	// Remove trailing "task" or "tasks"
+	if len(words) > 0 {
+		last := strings.ToLower(words[len(words)-1])
+		if last == "task" || last == "tasks" {
+			words = words[:len(words)-1]
+		}
+	}
+
+	title = strings.Join(words, " ")
+
+	// // Remove duplicated description
+	// if strings.EqualFold(title, description) {
+	// 	description = ""
+	// }
+
+	// Clean description capitalization
+	if len(description) > 0 {
+		description = strings.TrimSpace(description)
+		description = strings.ToUpper(description[:1]) + description[1:]
+	}
+
+	// Limit extremely long titles
+	words = strings.Fields(title)
+	if len(words) > 10 {
+		title = strings.Join(words[:10], " ")
+	}
+
+	// Capitalize title
+	if len(title) > 0 {
+		title = strings.ToUpper(title[:1]) + title[1:]
+	}
+
+	return title, description
+}
+
+func normalizeDueFilter(filter *model.TaskFilter) {
+
+	if filter.DueDate == "" {
+		return
+	}
+
+	now := time.Now().UTC()
+
+	resolvers := map[string]func() (time.Time, time.Time){
+
+		"today": func() (time.Time, time.Time) {
+			start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+			return start, start.Add(24 * time.Hour)
+		},
+
+		"tomorrow": func() (time.Time, time.Time) {
+			start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).
+				Add(24 * time.Hour)
+			return start, start.Add(24 * time.Hour)
+		},
+
+		"this_week": func() (time.Time, time.Time) {
+			weekday := int(now.Weekday())
+			start := now.AddDate(0, 0, -weekday)
+			start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+			return start, start.AddDate(0, 0, 7)
+		},
+
+		"next_week": func() (time.Time, time.Time) {
+			start := now.AddDate(0,0,7)
+			return start, start.AddDate(0,0,7)
+		},
+
+		"overdue": func() (time.Time, time.Time) {
+			return time.Time{}, now
+		},
+	}
+
+	if resolver, ok := resolvers[strings.ToLower(filter.DueDate)]; ok {
+
+		start, end := resolver()
+
+		if !start.IsZero() {
+			filter.DueStart = start.Format(time.RFC3339)
+		}
+
+		if !end.IsZero() {
+			filter.DueEnd = end.Format(time.RFC3339)
+		}
+	}
+}
+
+
 func validateDueDate(dateStr string, currentStatus string) (time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339, dateStr)
 	if err != nil {
@@ -237,3 +395,9 @@ func validateTransition(current, next string) error {
 }
 
 
+func defaultString(val, fallback string) string {
+    if val == "" {
+        return fallback
+    }
+    return val
+}

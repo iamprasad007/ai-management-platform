@@ -63,4 +63,10 @@ public class UserController {
             return ResponseEntity.notFound().build();
         }
     }
+
+    //Fuzzy Search User
+    @GetMapping("/search")
+    public List<User> searchUsers(@RequestParam String q) {
+        return userService.searchUsers(q);
+    } 
 }

@@ -7,12 +7,13 @@ import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 import org.springframework.data.elasticsearch.annotations.DateFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Document(indexName = "users", createIndex = true) 
 public class User {
     @Id

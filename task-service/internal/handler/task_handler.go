@@ -73,6 +73,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		Status:     query.Get("status"),
 		Priority:   query.Get("priority"),
 		Title:      query.Get("title"),
+		DueDate:        query.Get("dueDate"),
 		DueStart:   query.Get("dueStart"),
 		DueEnd:     query.Get("dueEnd"),
 	}

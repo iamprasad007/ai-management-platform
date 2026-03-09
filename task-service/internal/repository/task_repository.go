@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 	"task-service/internal/model"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v8"
@@ -87,20 +88,70 @@ func (r *TaskRepository) Search(filter model.TaskFilter) ([]model.Task, error) {
 		})
 	}
 
+	if filter.DueDate != "" {
+
+		t, err := time.Parse(time.RFC3339, filter.DueDate)
+		if err == nil {
+
+			start := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+			end := start.Add(24 * time.Hour)
+
+			must = append(must, map[string]interface{}{
+				"range": map[string]interface{}{
+					"dueDate": map[string]interface{}{
+						"gte": start.Format(time.RFC3339),
+						"lt":  end.Format(time.RFC3339),
+					},
+				},
+			})
+		}
+	}
+
+	if filter.DueStart != "" || filter.DueEnd != "" {
+
+		rangeQuery := map[string]interface{}{
+			"range": map[string]interface{}{
+				"dueDate": map[string]interface{}{},
+			},
+		}
+
+		if filter.DueStart != "" {
+			rangeQuery["range"].(map[string]interface{})["dueDate"].(map[string]interface{})["gte"] = filter.DueStart
+		}
+
+		if filter.DueEnd != "" {
+			rangeQuery["range"].(map[string]interface{})["dueDate"].(map[string]interface{})["lt"] = filter.DueEnd
+		}
+
+		must = append(must, rangeQuery)
+	}
+
 	if filter.Title != "" {
 		must = append(must, map[string]interface{}{
-			"match": map[string]interface{}{
-				"title": filter.Title,
+			"multi_match": map[string]interface{}{
+				"query":     filter.Title,
+				"fields":    []string{"title^3", "description"},
+				"fuzziness": "AUTO",
 			},
 		})
 	}
 
-	query := map[string]interface{}{
-		"query": map[string]interface{}{
-			"bool": map[string]interface{}{
-				"must": must,
+	var query map[string]interface{}
+
+	if len(must) == 0 {
+		query = map[string]interface{}{
+			"query": map[string]interface{}{
+				"match_all": map[string]interface{}{},
 			},
-		},
+		}
+	} else {
+		query = map[string]interface{}{
+			"query": map[string]interface{}{
+				"bool": map[string]interface{}{
+					"must": must,
+				},
+			},
+		}
 	}
 
 	var buf bytes.Buffer
@@ -109,6 +160,8 @@ func (r *TaskRepository) Search(filter model.TaskFilter) ([]model.Task, error) {
 	res, err := r.es.Search(
 		r.es.Search.WithIndex("tasks"),
 		r.es.Search.WithBody(&buf),
+		r.es.Search.WithSize(100),
+		r.es.Search.WithSort("createdAt:desc"),
 	)
 	if err != nil {
 		return nil, err

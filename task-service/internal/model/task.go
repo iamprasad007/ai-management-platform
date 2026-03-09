@@ -23,6 +23,7 @@ type TaskFilter struct {
 	Status     string
 	Priority   string
 	Title      string
+	DueDate string
 	DueStart   string
 	DueEnd     string
 }

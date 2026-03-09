@@ -124,7 +124,7 @@ services:
     environment:
       USER_SERVICE_URL: http://user-service:8080
       TASK_SERVICE_URL: http://task-service:8081
-      GROQ_API_KEY: "**REPLACE_WITH_YOUR_GROQ_API_KEY**"
+      GROQ_API_KEY: "**Replace with your actual GROQ API key**"
 
   # ollama:
   #   image: ollama/ollama

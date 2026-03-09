@@ -2,8 +2,11 @@ package com.example.user.service;
 
 import com.example.user.model.User;
 import com.example.user.repository.UserRepository;
+
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import co.elastic.clients.elasticsearch.core.SearchResponse;
+
 import org.springframework.stereotype.Service;
-import org.springframework.context.annotation.Lazy;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,9 +20,12 @@ import java.util.stream.StreamSupport;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final ElasticsearchClient elasticsearchClient;
 
-    public UserService(@Lazy UserRepository userRepository) {
+    public UserService(UserRepository userRepository,
+                       ElasticsearchClient elasticsearchClient) {
         this.userRepository = userRepository;
+        this.elasticsearchClient = elasticsearchClient;
     }
 
     // CREATE
@@ -69,5 +75,51 @@ public class UserService {
         }
         userRepository.deleteById(id);
         return true;
+    }
+
+    // FUZZY SEARCH USERS
+    public List<User> searchUsers(String query) {
+
+        try {
+            SearchResponse<User> response = elasticsearchClient.search(s -> s
+                    .index("users")
+                    .size(10)
+                    .query(q -> q
+                            .bool(b -> b
+                                    .minimumShouldMatch("1")
+                                    .should(sh -> sh
+                                            .match(m -> m
+                                                    .field("name")
+                                                    .query(query)
+                                                    .boost(3.0f)
+                                            )
+                                    )
+                                    .should(sh -> sh
+                                            .prefix(p -> p
+                                                    .field("name")
+                                                    .value(query.toLowerCase())
+                                            )
+                                    )
+                                    .should(sh -> sh
+                                            .fuzzy(f -> f
+                                                    .field("name")
+                                                    .value(query)
+                                                    .fuzziness("AUTO")
+                                            )
+                                    )
+                            )
+                    ),
+                    User.class
+            );
+
+            return response.hits()
+                    .hits()
+                    .stream()
+                    .map(hit -> hit.source())
+                    .toList();
+
+        } catch (Exception e) {
+            throw new RuntimeException("User search failed", e);
+        }
     }
 }
