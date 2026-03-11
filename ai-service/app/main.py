@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.models import AIRequest
+from app.models import AIRequest, ExtractedTask
 from app.user_client import resolve_user_from_prompt
 from app.task_client import create_task, find_task_by_title, update_task, query_tasks
 from app.llm_client import extract_with_llm
@@ -8,10 +8,10 @@ from app.utils import parse_due_date
 
 app = FastAPI()
 
-async def handle_create_task(req: AIRequest, llm_data):
+async def handle_create_task(req: AIRequest, llm_data: ExtractedTask):
 
-    title = llm_data.get("title")
-    due_text = llm_data.get("due_date_text")
+    title = llm_data.title
+    due_text = llm_data.due_date_text
 
     user_id, matched_name = await resolve_user_from_prompt(
         req.prompt,
@@ -19,7 +19,7 @@ async def handle_create_task(req: AIRequest, llm_data):
     )
 
     if user_id:
-        llm_data["assignee_name"] = matched_name
+        llm_data.assignee_name = matched_name
 
     missing = []
 
@@ -42,15 +42,15 @@ async def handle_create_task(req: AIRequest, llm_data):
         return {
             "status": "INCOMPLETE",
             "missing_fields": missing,
-            "llm_output": llm_data
+            "llm_output": llm_data.model_dump()
         }
 
     task_payload = {
         "title": title,
-        "description": llm_data.get("description") or req.prompt,
+        "description": llm_data.description or req.prompt,
         "creatorId": req.creatorId,
         "assigneeId": user_id,
-        "priority": llm_data.get("priority"),
+        "priority": llm_data.priority,
         "dueDate": due_date_iso
     }
 
@@ -72,15 +72,15 @@ async def handle_create_task(req: AIRequest, llm_data):
     }
 
 
-async def handle_update_task(req: AIRequest, llm_data):
+async def handle_update_task(req: AIRequest, llm_data: ExtractedTask):
 
-    title = llm_data.get("title")
+    title = llm_data.title
 
     if not title:
         return {
             "status": "INCOMPLETE",
             "missing_fields": ["title"],
-            "llm_output": llm_data
+            "llm_output": llm_data.model_dump()
         }
 
     task = await find_task_by_title(title)
@@ -93,21 +93,21 @@ async def handle_update_task(req: AIRequest, llm_data):
 
     update_payload = {}
 
-    if llm_data.get("status"):
-        update_payload["status"] = llm_data["status"]
+    if llm_data.status:
+        update_payload["status"] = llm_data.status
 
-    if llm_data.get("priority"):
-        update_payload["priority"] = llm_data["priority"]
+    if llm_data.priority:
+        update_payload["priority"] = llm_data.priority
 
-    if llm_data.get("due_date_text"):
+    if llm_data.due_date_text:
         due_result = parse_due_date(
-            llm_data["due_date_text"],
+            llm_data.due_date_text,
             req.timezone_offset
         )
         if due_result and "dueDate" in due_result:
             update_payload["dueDate"] = due_result["dueDate"]
 
-    if llm_data.get("assignee_name"):
+    if llm_data.assignee_name:
         user_id, _ = await resolve_user_from_prompt(
             req.prompt,
             req.creatorId
@@ -119,7 +119,7 @@ async def handle_update_task(req: AIRequest, llm_data):
         return {
             "status": "INCOMPLETE",
             "missing_fields": ["update_fields"],
-            "llm_output": llm_data
+            "llm_output": llm_data.model_dump()
         }
 
     updated = await update_task(task["id"], update_payload)
@@ -135,22 +135,22 @@ async def handle_update_task(req: AIRequest, llm_data):
         "task": updated["data"]
     }
 
-async def handle_get_task(req: AIRequest, llm_data):
+async def handle_get_task(req: AIRequest, llm_data: ExtractedTask):
 
     filters = {}
 
-    title = llm_data.get("title")
-    due_text = llm_data.get("due_date_text")
+    title = llm_data.title
+    due_text = llm_data.due_date_text
 
     # Only apply title filter if it's likely a real task name
     if title and not due_text:
         filters["title"] = title
 
-    if llm_data.get("status"):
-        filters["status"] = llm_data["status"]
+    if llm_data.status:
+        filters["status"] = llm_data.status
 
-    if llm_data.get("priority"):
-        filters["priority"] = llm_data["priority"]
+    if llm_data.priority:
+        filters["priority"] = llm_data.priority
 
     # Resolve assignee
     user_id, matched_name = await resolve_user_from_prompt(
@@ -201,23 +201,24 @@ INTENT_HANDLERS = {
 @app.post("/ai/process")
 async def ai_process(req: AIRequest):
     try:
-        llm_data = await extract_with_llm(req.prompt)
+        llm_raw = await extract_with_llm(req.prompt)
+        llm_data = ExtractedTask(**llm_raw)
     except Exception as e:
         return {
             "status": "LLM_TIMEOUT",
             "error": str(e)
         }
 
-    print("LLM EXTRACTED DATA:", llm_data)
+    print("LLM EXTRACTED DATA:", llm_data.model_dump())
 
-    intent = llm_data.get("intent")
+    intent = llm_data.intent
 
     handler = INTENT_HANDLERS.get(intent)
 
     if not handler:
         return {
             "status": "UNSUPPORTED_INTENT",
-            "llm_output": llm_data
+            "llm_output": llm_data.model_dump()
         }
 
     return await handler(req, llm_data)

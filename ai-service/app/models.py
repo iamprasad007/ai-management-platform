@@ -9,9 +9,11 @@ class AIRequest(BaseModel):
 
 
 class ExtractedTask(BaseModel):
+    intent: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
     assignee_name: Optional[str] = None
     priority: Optional[str] = None
+    status: Optional[str] = None
     due_date_text: Optional[str] = None
     due_date_iso: Optional[str] = None
