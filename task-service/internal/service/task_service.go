@@ -48,6 +48,11 @@ func (s *TaskService) CreateTask(req model.Task) (model.Task, error) {
 		return model.Task{}, fmt.Errorf("invalid assignee")
 	}
 
+	parsed_time, err := validateDueDate(req.DueDate)
+	if err != nil {
+		return model.Task{}, err
+	}
+
 	// Role Validation
 	switch creator.Role {
 
@@ -352,7 +357,7 @@ func normalizeDueFilter(filter *model.TaskFilter) {
 }
 
 
-func validateDueDate(dateStr string, currentStatus string) (time.Time, error) {
+func validateDueDate(dateStr string) (time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339, dateStr)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("invalid dueDate format")
@@ -360,10 +365,6 @@ func validateDueDate(dateStr string, currentStatus string) (time.Time, error) {
 
 	if parsed.Before(time.Now()) {
 		return time.Time{}, fmt.Errorf("due date cannot be in the past")
-	}
-
-	if currentStatus == StatusCompleted {
-		return time.Time{}, fmt.Errorf("cannot modify due date of completed task")
 	}
 
 	return parsed, nil
